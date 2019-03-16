@@ -1,0 +1,45 @@
+Our device device’s energy consumption
+-----------------------------------------
+
+Without using any energy-saving techniques, our MCU uses 13.53 mAmps of power
+when flashing LEDs and when it is moved, it uses 14 mAmps.
+
+1) Reducing clock speed Using CPUSEL div128, it went down to 12.85 mAmps
+fluctuating between 4.85 and 5.55 mAmps. We did this by setting a prescaler
+value to the cpusel register on the power manager. Next, we use the OSC8M 8Mhz
+clock and disable the 48 Mhz clock. This saved about 2 mAmps of power compared
+to CPUSEL in which now the CPU uses about 2 mAmps of power. We did this by
+configuring and enabling the OSC8M clock. Then resetting the GCLK and set
+GENCTRL to clock generator 0 and pick OSC8M as the clock source.
+
+2) Clock gating When using the clock gating technique, the MCU power fluctuates
+between 13.25 to 14.05 mAmps. 13.25 when it is flashing LEDs since we disable
+the i2c clock and 14 when the i2c clock is turned on. We did this by selecting
+the clock control sercom3 peripheral channel and disabling it when we are not
+using it while flashing LEDs. When using a 32Mhz clock and using the clock
+gating technique, the MCU power goes from 3.19 to 3.25 to 3.32 to 3.74 which
+averages out to about 3.375 mAmps of savings.
+
+3) CPU sleep modes Putting the CPU in idle dropped the power consumption from
+13 mAmps to 2.5-3 mAmps. We did this by setting the sleep register in the power
+manager. Then by calling the ARM wait for interrupt function to put the CPU to
+sleep. We wake the CPU backed a TC3 interrupt with high priority. Next, we put
+the CPU into standby mode by setting the SCR.SLEEPDEEP bit of the CPU is
+written to 1 and executing the wait for interrupt instruction, conveniently
+just an ARM function call. We woke the CPU backed up by setting up the
+real-time clock running on the 32 kHz clock. This dropped the CPU down to
+1mAmps and down to 0.2 mAmps by removing the init() call and down to 0.1 with
+removing init and using the bma250 sleep modes.
+
+4) External peripheral low-power modes When using the bma250 power saving
+modes, it saves about 0.1 mAmp of power. We did this by writing to the 0x11
+(PMU_LPW) and 0x12 (PMU_LOW_NOISE) registers selecting suspend and lower power
+mode.
+
+5) Other Removing the Arduino init function called saved about 1mAmp of power
+in sleep mode because it powers up a lot of things like ADC/dacs and all the
+sercoms which we don't use for the privtag application. Using the 48Mhz clock,
+it drops it down from using 13 mAmps to 8-9 mAmps of power.
+
+Overall, we got down to 0.1-0.2 mAmps in sleep mode and 2 mAmps in active mode.
+

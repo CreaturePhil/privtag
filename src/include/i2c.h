@@ -11,7 +11,7 @@ uint8_t i2c_transaction(uint8_t address, uint8_t dir, uint8_t* data, uint8_t len
 // 20-21 SCL cycle time-out (200-210μs)
 #define CSE190_SERCOM_I2CM_CTRLA_INACTOUT_205US 0x3
 
-#define F_GCLK 48000000  // 48 MHz
+#define F_GCLK 8000000  // 48 MHz
 #define F_SCL  400000    // 100 KHz
 
 #define BUS_STATE_IDLE  0b01

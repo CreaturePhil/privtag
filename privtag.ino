@@ -10,62 +10,57 @@
 
 volatile int t;
 
+void serial_clock_gate(int enable, int id) {
+  GCLK->CLKCTRL.bit.ID = id;
+  GCLK->CLKCTRL.bit.CLKEN = enable;
+  while (GCLK->STATUS.bit.SYNCBUSY);
+}
+
+
+void enable_bma250_low_power_mode() {
+  uint8_t data[1];
+  data[0] = 0x12;
+  i2c_transaction(ADDR_BMA250, DIR_WRITE, data, 1);
+  data[0] = 0b01000000;
+  i2c_transaction(ADDR_BMA250, DIR_WRITE, data, 1);
+
+  data[0] = 0x11;
+  i2c_transaction(ADDR_BMA250, DIR_WRITE, data, 1);
+  data[0] = 0b11011100;
+  i2c_transaction(ADDR_BMA250, DIR_WRITE, data, 1);
+}
+
 void privtag_init()
 {
+  clock_GCLK_reset();
 
-/*GCLK->CTRL.reg = GCLK_CTRL_SWRST;*/
+  clock_XOSC32K_enable();
 
-  /*while ( (GCLK->CTRL.reg & GCLK_CTRL_SWRST) && (GCLK->STATUS.reg & GCLK_STATUS_SYNCBUSY) )*/
-  /*{*/
-    /*[> Wait for reset to complete <]*/
-/*}*/
+  clock_GCLK_OSC8M_enable();
 
-  config32kOSC();
+  clock_DFLLCTRL_disable();
 
-/*GCLK->GENDIV.reg = GCLK_GENDIV_ID( 1 ); // Generic Clock Generator 1*/
-
-  /*while ( GCLK->STATUS.reg & GCLK_STATUS_SYNCBUSY )*/
-  /*{*/
-    /*[> Wait for synchronization <]*/
-  /*}*/
-
-  /*[> Write Generic Clock Generator 1 configuration <]*/
-  /*GCLK->GENCTRL.reg = GCLK_GENCTRL_ID( 1 ) | // Generic Clock Generator 1*/
-                      /*GCLK_GENCTRL_SRC_OSC32K | // Selected source is Internal 32KHz Oscillator*/
-/*//                      GCLK_GENCTRL_OE | // Output clock to a pin for tests*/
-                      /*GCLK_GENCTRL_GENEN;*/
-
-
-
-
-  /*while ( GCLK->STATUS.reg & GCLK_STATUS_SYNCBUSY )*/
-  /*{*/
-    /*[> Wait for synchronization <]*/
-  /*}*/
-
-   /*SYSCTRL->DFLLCTRL.bit.ENABLE = 0;*/
-     /*while ( (SYSCTRL->PCLKSR.reg & SYSCTRL_PCLKSR_DFLLRDY) == 0 )*/
-  /*{*/
-    /*[> Wait for synchronization <]*/
-/*}*/
-
-  clock_setup(GCLK_CLKCTRL_GEN_GCLK1_Val, GCLK_CLKCTRL_ID_TCC2_TC3_Val);
+  clock_setup(GCLK_CLKCTRL_GEN_GCLK0_Val, GCLK_CLKCTRL_ID_TCC2_TC3_Val);
   PM->APBCMASK.reg |= PM_APBCMASK_TC3;
-  timer_init(TC3, TC3_IRQn, TC_CTRLA_PRESCALER_DIV1024, compute_cc_value(50));
+  timer_init(TC3, TC3_IRQn, TC_CTRLA_PRESCALER_DIV1024, compute_cc_value(1000));
 
   PM->APBCMASK.reg |= PM_APBCMASK_SERCOM3;
-  clock_setup(GCLK_CLKCTRL_GEN_GCLK1_Val, GCLK_CLKCTRL_ID_SERCOM3_CORE_Val);
+  clock_setup(GCLK_CLKCTRL_GEN_GCLK0_Val, GCLK_CLKCTRL_ID_SERCOM3_CORE_Val);
   i2c_init();
   bma250_init();
 
+  #if 1
   PM->APBAMASK.reg |= PM_APBAMASK_RTC;
-  clock_setup(GCLK_CLKCTRL_GEN_GCLK1_Val, GCLK_CLKCTRL_ID_RTC_Val);
-  rtc_init(0xA, 100); // 3 seconds
+  clock_setup(GCLK_CLKCTRL_GEN_GCLK2_Val, GCLK_CLKCTRL_ID_RTC_Val);
+  rtc_init(0xA, 8); // 3 seconds
+  #endif
+
+  enable_bma250_low_power_mode();
 }
 
 void privtag_app()
 {
-#if 1
+  #if 1
   int16_t x, y, z;
   bma250_read_xyz(&x, &y, &z);
 
@@ -82,29 +77,30 @@ void privtag_app()
   }
 
   if (turnOnLEDs) {
-    // TODO(phil): change name of macro
-    DELAY_SECOND(2) {
+   serial_clock_gate(0, GCLK_CLKCTRL_ID_SERCOM3_CORE_Val);
+    DELAY_SECOND(1) {
       SHOW_PRIV_TAG();
     }
 
     ledcircle_select(0);
 
-    DELAY_SECOND(2) {
+    DELAY_SECOND(1) {
       display_time_led(seconds);
     }
 
     ledcircle_select(0);
+    serial_clock_gate(1, GCLK_CLKCTRL_ID_SERCOM3_CORE_Val);
   }
   #endif
 
+  #if 0
   if (t) {
-
-  ledcircle_select(8);
+  ledcircle_select(16-t);
   }
   else {
-
-  ledcircle_select(0);
+  ledcircle_select(2);
   }
+  #endif
 
   // TODO(phil): sleep
   sleep();
@@ -117,7 +113,10 @@ void privtag_app()
  */
 
 void TC3_Handler(void) {
-/*t = !t;*/
+  #if 0
+  if (t <= 16) t = t+1;
+  else t = 0;
+  #endif
   seconds++;
   if (timerCount != 0) {
     timerCount--;
@@ -135,7 +134,8 @@ void USB_Handler(void) {
 // note may need to move seconds count in rtc
 void RTC_Handler(void)
 {
-/*t = !t;*/
+  if (t <= 16) t = t+1;
+  else t = 0;
   // FIXME(phil): remove this
   printf("rtc\n");
   RTC->MODE1.INTFLAG.bit.OVF = 1;
@@ -170,7 +170,7 @@ uint32_t compute_cc_value(uint32_t period_ms)
 {
   uint16_t hertz = ONE_mHZ / period_ms;
   uint16_t ccValue = CPU_HZ / (PRESCALER_DIV * hertz) - 1;
-  return 16;
+  return 16; // 16
 }
 
 void display_time_led(uint16_t seconds)

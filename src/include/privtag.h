@@ -5,7 +5,7 @@
 #define TIME_NOT_MOVE 5
 
 // for timer cc formula
-#define CPU_HZ 32000000
+#define CPU_HZ 8000000
 #define PRESCALER_DIV 1024
 #define ONE_mHZ 1000
 
