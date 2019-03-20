@@ -7,6 +7,7 @@
 #include "src/include/rtc.h"
 #include "src/include/print.h"
 #include "src/include/lib_aci.h"
+#include "src/include/ble.h"
 #include "src/include/privtag.h"
 
 #define BLE_DEBUG true
@@ -75,7 +76,10 @@ void privtag_app()
     ledcircle_select(0);
     #else
     /*printf("SLEEP!\n");*/
-    lib_aci_sleep();
+    if (g_phone_detected)
+    {
+      lib_aci_sleep();
+    }
     #endif
 
     turnOnBeacon = false;
@@ -102,7 +106,10 @@ void privtag_app()
     ledcircle_select(0);
     #else
     /*printf("WAKE!\n");*/
-    lib_aci_wakeup();
+    if (!g_phone_detected)
+    {
+      lib_aci_wakeup();
+    }
     #endif
   }
 

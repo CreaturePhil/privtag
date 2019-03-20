@@ -5,6 +5,8 @@
 #include "../include/services.h"
 #include "../include/link_loss.h"
 
+extern "C" bool g_phone_detected;
+
 
 #ifdef SERVICES_PIPE_TYPE_MAPPING_CONTENT
 static services_pipe_type_mapping_t
@@ -217,6 +219,7 @@ void ble_loop()
           //Note: This may be called multiple times after the Arduino has connected to the right phone
           SerialUSB.println(F("phone Detected."));
           SerialUSB.println(F("Do more stuff here. when your phone is detected"));
+          g_phone_detected = true;
         }
         break;
 
