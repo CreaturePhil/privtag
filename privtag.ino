@@ -6,32 +6,17 @@
 #include "src/include/bma250.h"
 #include "src/include/rtc.h"
 #include "src/include/print.h"
+#include "src/include/lib_aci.h"
 #include "src/include/privtag.h"
 
+#define BLE_DEBUG true
+
+// FIXME(phil): remove this debug code
 volatile int t;
-
-void serial_clock_gate(int enable, int id) {
-  GCLK->CLKCTRL.bit.ID = id;
-  GCLK->CLKCTRL.bit.CLKEN = enable;
-  while (GCLK->STATUS.bit.SYNCBUSY);
-}
-
-
-void enable_bma250_low_power_mode() {
-  uint8_t data[1];
-  data[0] = 0x12;
-  i2c_transaction(ADDR_BMA250, DIR_WRITE, data, 1);
-  data[0] = 0b01000000;
-  i2c_transaction(ADDR_BMA250, DIR_WRITE, data, 1);
-
-  data[0] = 0x11;
-  i2c_transaction(ADDR_BMA250, DIR_WRITE, data, 1);
-  data[0] = 0b11011100;
-  i2c_transaction(ADDR_BMA250, DIR_WRITE, data, 1);
-}
 
 void privtag_init()
 {
+  #if SLOWER_CLOCK_ENABLE
   clock_GCLK_reset();
 
   clock_XOSC32K_enable();
@@ -39,45 +24,71 @@ void privtag_init()
   clock_GCLK_OSC8M_enable();
 
   clock_DFLLCTRL_disable();
+  #endif
+
+  ble_setup();
 
   clock_setup(GCLK_CLKCTRL_GEN_GCLK0_Val, GCLK_CLKCTRL_ID_TCC2_TC3_Val);
-  PM->APBCMASK.reg |= PM_APBCMASK_TC3;
+  /*PM->APBCMASK.reg |= PM_APBCMASK_TC3;*/
   timer_init(TC3, TC3_IRQn, TC_CTRLA_PRESCALER_DIV1024, compute_cc_value(1000));
 
-  PM->APBCMASK.reg |= PM_APBCMASK_SERCOM3;
+  /*PM->APBCMASK.reg |= PM_APBCMASK_SERCOM3;*/
   clock_setup(GCLK_CLKCTRL_GEN_GCLK0_Val, GCLK_CLKCTRL_ID_SERCOM3_CORE_Val);
   i2c_init();
   bma250_init();
 
-  #if 1
+  #if SLEEP_MODE_ENABLE
   PM->APBAMASK.reg |= PM_APBAMASK_RTC;
   clock_setup(GCLK_CLKCTRL_GEN_GCLK2_Val, GCLK_CLKCTRL_ID_RTC_Val);
-  rtc_init(0xA, 8); // 3 seconds
+  rtc_init(0xA, 8);
   #endif
 
-  enable_bma250_low_power_mode();
+  ble_setup();
 }
 
 void privtag_app()
 {
-  #if 1
+    ble_loop();
+
+#if 0
+  if (t) {
+  printf("WAKE!\n");
+    lib_aci_wakeup();
+    t = !t;
+  } else {
+  printf("SLEEP!\n");
+    lib_aci_sleep();
+    t = !t;
+  }
+  #endif
+
+#if 1
   int16_t x, y, z;
   bma250_read_xyz(&x, &y, &z);
 
   bool hasMove = movement_detected(x,y,z);
   prev_x = x; prev_y = y; prev_z = z;
-
   if (hasMove) {
     seconds = 0;
+
+    #if LED_ENABLE
     ledcircle_select(0);
-    turnOnLEDs = false;
+    #else
+    /*printf("SLEEP!\n");*/
+    lib_aci_sleep();
+    #endif
+
+    turnOnBeacon = false;
   }
-  else if (seconds >= TIME_NOT_MOVE) {
-    turnOnLEDs = true;
+  else
+  {
+    if (seconds >= TIME_NOT_MOVE) {
+      turnOnBeacon = true;
+    }
   }
 
-  if (turnOnLEDs) {
-   serial_clock_gate(0, GCLK_CLKCTRL_ID_SERCOM3_CORE_Val);
+  if (turnOnBeacon) {
+    #if LED_ENABLE
     DELAY_SECOND(1) {
       SHOW_PRIV_TAG();
     }
@@ -89,23 +100,18 @@ void privtag_app()
     }
 
     ledcircle_select(0);
-    serial_clock_gate(1, GCLK_CLKCTRL_ID_SERCOM3_CORE_Val);
+    #else
+    /*printf("WAKE!\n");*/
+    lib_aci_wakeup();
+    #endif
   }
-  #endif
 
-  #if 0
-  if (t) {
-  ledcircle_select(16-t);
-  }
-  else {
-  ledcircle_select(2);
-  }
-  #endif
-
-  // TODO(phil): sleep
+  #if SLEEP_MODE_ENABLE
   sleep();
+  #endif
 
-  /*printf("x:%d y:%d z:%d movement_detected:%d seconds:%d\n", x, y, z, hasMove, seconds);*/
+  printf("x:%d y:%d z:%d movement_detected:%d seconds:%d\n", x, y, z, hasMove, seconds);
+  #endif
 }
 
 /*
@@ -170,7 +176,11 @@ uint32_t compute_cc_value(uint32_t period_ms)
 {
   uint16_t hertz = ONE_mHZ / period_ms;
   uint16_t ccValue = CPU_HZ / (PRESCALER_DIV * hertz) - 1;
+  #if SLOWER_CLOCK_ENABLE
   return 16; // 16
+  #else
+  return ccValue;
+  #endif
 }
 
 void display_time_led(uint16_t seconds)

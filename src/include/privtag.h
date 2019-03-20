@@ -1,11 +1,16 @@
 #ifndef _PRIVTAG_H_
 #define _PRIVTAG_H_
 
+#define SLEEP_MODE_ENABLE 0
+#define SLOWER_CLOCK_ENABLE 0
+
+#define LED_ENABLE 0
+
 #define THRESHOLD 150
 #define TIME_NOT_MOVE 5
 
 // for timer cc formula
-#define CPU_HZ 8000000
+#define CPU_HZ 48000000
 #define PRESCALER_DIV 1024
 #define ONE_mHZ 1000
 
@@ -20,7 +25,7 @@ static uint16_t volatile timerCount;
 static uint8_t volatile isUSBConnected;
 
 static int16_t prev_x, prev_y, prev_z;
-static bool turnOnLEDs;
+static bool turnOnBeacon;
 
 void privtag_init();
 
