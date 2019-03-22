@@ -9,116 +9,120 @@
 #include "src/include/lib_aci.h"
 #include "src/include/ble.h"
 #include "src/include/privtag.h"
+#include "src/include/alert_level_characteristic.h"
 
 #define BLE_DEBUG true
 
-// FIXME(phil): remove this debug code
 volatile int t;
+extern "C" bool g_phone_detected;
+extern "C" bool findMeMode;
+extern "C" bool g_phone_paired;
+bool g_phone_paired = false;
+bool g_phone_detected = false; // global import...
+bool findMeMode = false;
 
+// Initializes the Peripherals for our Sensor
 void privtag_init()
 {
+  // Reduced Clock speed Enabled
   #if SLOWER_CLOCK_ENABLE
-  clock_GCLK_reset();
-
-  clock_XOSC32K_enable();
-
-  clock_GCLK_OSC8M_enable();
-
-  clock_DFLLCTRL_disable();
+  //  clock_GCLK_reset(); // reset the clock and enable 8MHz can work...
+    clock_XOSC32K_enable();
+   // clock_GCLK_OSC8M_enable();
+    // clock_DFLLCTRL_disable();
   #endif
 
+  // Deep Sleep mode state activated
+  #if SLEEP_MODE_ENABLE
+    PM->APBAMASK.reg |= PM_APBAMASK_RTC;
+    clock_setup(GCLK_CLKCTRL_GEN_GCLK2_Val, GCLK_CLKCTRL_ID_RTC_Val);
+    rtc_init(0xA, 8);
+  #endif
+
+  // Setup of Bluetooth
   ble_setup();
 
+  // Clock Setup
   clock_setup(GCLK_CLKCTRL_GEN_GCLK0_Val, GCLK_CLKCTRL_ID_TCC2_TC3_Val);
   /*PM->APBCMASK.reg |= PM_APBCMASK_TC3;*/
   timer_init(TC3, TC3_IRQn, TC_CTRLA_PRESCALER_DIV1024, compute_cc_value(1000));
 
   /*PM->APBCMASK.reg |= PM_APBCMASK_SERCOM3;*/
   clock_setup(GCLK_CLKCTRL_GEN_GCLK0_Val, GCLK_CLKCTRL_ID_SERCOM3_CORE_Val);
+  
+  // Acceleromter setup
   i2c_init();
   bma250_init();
 
-  #if SLEEP_MODE_ENABLE
-  PM->APBAMASK.reg |= PM_APBAMASK_RTC;
-  clock_setup(GCLK_CLKCTRL_GEN_GCLK2_Val, GCLK_CLKCTRL_ID_RTC_Val);
-  rtc_init(0xA, 8);
-  #endif
-
-  ble_setup();
 }
 
 void privtag_app()
 {
-    ble_loop();
-
-#if 0
-  if (t) {
-  printf("WAKE!\n");
-    lib_aci_wakeup();
-    t = !t;
-  } else {
-  printf("SLEEP!\n");
-    lib_aci_sleep();
-    t = !t;
-  }
-  #endif
-
-#if 1
+  ble_loop();
   int16_t x, y, z;
-  bma250_read_xyz(&x, &y, &z);
-
+  bma250_read_xyz(&x, &y, &z); // the bma read is causing a bug in sercom?? somehow we aren't broadcasting unless usb is connected    
   bool hasMove = movement_detected(x,y,z);
   prev_x = x; prev_y = y; prev_z = z;
+
   if (hasMove) {
     seconds = 0;
-
-    #if LED_ENABLE
-    ledcircle_select(0);
-    #else
-    /*printf("SLEEP!\n");*/
-    if (g_phone_detected)
-    {
-      lib_aci_sleep();
-    }
-    #endif
-
     turnOnBeacon = false;
   }
   else
   {
     if (seconds >= TIME_NOT_MOVE) {
-      turnOnBeacon = true;
+      turnOnBeacon = true; // we arm it 
     }
+  }
+  if (g_phone_detected && g_phone_paired){
+    if (findMeMode) {
+      if (hasMove) {
+        // Debugging via USB
+        if (PRINT_DEBUG_ENABLE) {
+          printf("Burglar moving your item!\n");
+          printf("%d\n", linkDisconnect());
+          printf("Alarm\n");
+        } else {
+          linkDisconnect();
+        }
+        linkReset();
+        DELAY_SECOND(1);
+      } else {
+        // don't push that alarm again please
+      }
+    } 
+  }
+// Debugging!
+if (PRINT_DEBUG_ENABLE) {
+  if (g_phone_detected) {
+    printf("Phone connected!\n"); 
+  } else {
+    printf("Phone not connected!\n");
+  }
+
+  if (g_phone_paired) {
+    printf("Phone paired!\n");
+  } else {
+    printf("Phone not paired!\n");
+  }
+
+  if (findMeMode) {
+    printf("Findme Mode on\n");
+  } else {
+    printf("Findme Mode off\n");
   }
 
   if (turnOnBeacon) {
-    #if LED_ENABLE
-    DELAY_SECOND(1) {
-      SHOW_PRIV_TAG();
-    }
-
-    ledcircle_select(0);
-
-    DELAY_SECOND(1) {
-      display_time_led(seconds);
-    }
-
-    ledcircle_select(0);
-    #else
-    /*printf("WAKE!\n");*/
-    if (!g_phone_detected)
-    {
-      lib_aci_wakeup();
-    }
-    #endif
+    printf("Armed!\n");
+  } else {
+    printf("Not Armed\n");
   }
-
-  #if SLEEP_MODE_ENABLE
-  sleep();
-  #endif
-
   printf("x:%d y:%d z:%d movement_detected:%d seconds:%d\n", x, y, z, hasMove, seconds);
-  #endif
+}
+  // #if SLEEP_MODE_ENABLE
+  // sleep();
+  // #endif
+  
 }
 
 /*
@@ -136,12 +140,6 @@ void TC3_Handler(void) {
   }
 
   TC3->COUNT32.INTFLAG.bit.MC0 = 1;
-}
-
-// TODO(phil): probably remove
-void USB_Handler(void) {
-  isUSBConnected = 1;
-  USBDevice.ISRHandler();
 }
 
 // note may need to move seconds count in rtc

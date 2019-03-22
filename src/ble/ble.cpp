@@ -5,8 +5,12 @@
 #include "../include/services.h"
 #include "../include/link_loss.h"
 
+// BEGIN MY VARIABLES
+// These variables are for debugging as well as detecting if the phone was paired, connected, or findMe was selected
 extern "C" bool g_phone_detected;
-
+extern "C" bool findMeMode;
+extern "C" bool g_phone_paired;
+// END 
 
 #ifdef SERVICES_PIPE_TYPE_MAPPING_CONTENT
 static services_pipe_type_mapping_t
@@ -188,6 +192,7 @@ void ble_loop()
         break;
 
       case ACI_EVT_CONNECTED:
+        g_phone_detected = true;
         SerialUSB.println(F("Evt Connected"));
         aci_state.data_credit_available = aci_state.data_credit_total;
         timing_change_done = false;
@@ -219,8 +224,9 @@ void ble_loop()
           //Note: This may be called multiple times after the Arduino has connected to the right phone
           SerialUSB.println(F("phone Detected."));
           SerialUSB.println(F("Do more stuff here. when your phone is detected"));
-          g_phone_detected = true;
+          g_phone_paired = true;
         }
+        // send a pipe change and then check status of flag: moved. If we moved then alarm
         break;
 
       case ACI_EVT_TIMING:
@@ -240,36 +246,53 @@ void ble_loop()
           break;
 
       case ACI_EVT_DISCONNECTED:
-        SerialUSB.println(F("Evt Disconnected. Link Lost or Advertising timed out"));
-        if (ACI_BOND_STATUS_SUCCESS == aci_state.bonded)
-        {
-          if (ACI_STATUS_EXTENDED == aci_evt->params.disconnected.aci_status) //Link was disconnected
+        // if we are in findMe Mode just disconnect and reconnect
+        if (findMeMode == true) {
+          SerialUSB.println(F("Evt Disconnected. Alarm triggered"));
+          if (ACI_BOND_STATUS_SUCCESS == aci_state.bonded)
           {
-            // TODO Read and store bonding information
-            
-            if (0x24 == aci_evt->params.disconnected.btle_status)
+            if (ACI_STATUS_EXTENDED == aci_evt->params.disconnected.aci_status) //Link was disconnected
             {
-              //The error code appears when phone or Arduino has deleted the pairing/bonding information.
-              //The Arduino stores the bonding information in EEPROM, which is deleted only by
-              // the user action of connecting pin 6 to 3.3v and then followed by a reset.
-              //While deleting bonding information delete on the Arduino and on the phone.
-              SerialUSB.println(F("phone/Arduino has deleted the bonding/pairing information"));
+              proximity_disconect_evt_rcvd (aci_evt->params.disconnected.btle_status);
             }
-
-            proximity_disconect_evt_rcvd (aci_evt->params.disconnected.btle_status);
+            lib_aci_connect(180/* in seconds */, 0x0100 /* advertising interval 100ms*/);
           }
-          lib_aci_connect(180/* in seconds */, 0x0100 /* advertising interval 100ms*/);
-          SerialUSB.println(F("Using existing bond stored in EEPROM."));
-          SerialUSB.println(F("   To delete the bond stored in EEPROM, connect Pin 6 to 3.3v and Reset."));
-          SerialUSB.println(F("   Make sure that the bond on the phone/PC is deleted as well."));
-          SerialUSB.println(F("Advertising started. Connecting."));
-        }
-        else
+        } 
+        // if we aren't in findme Mode, do normal operations
+        else 
         {
-          //There is no existing bond. Try to bond.
-          lib_aci_bond(180/* in seconds */, 0x0050 /* advertising interval 50ms*/);
-          SerialUSB.println(F("Advertising started. Bonding."));
-        }
+          g_phone_detected = false;
+          SerialUSB.println(F("Evt Disconnected. Link Lost or Advertising timed out"));
+          if (ACI_BOND_STATUS_SUCCESS == aci_state.bonded)
+          {
+            if (ACI_STATUS_EXTENDED == aci_evt->params.disconnected.aci_status) //Link was disconnected
+            {
+              // TODO Read and store bonding information
+              
+              if (0x24 == aci_evt->params.disconnected.btle_status)
+              {
+                //The error code appears when phone or Arduino has deleted the pairing/bonding information.
+                //The Arduino stores the bonding information in EEPROM, which is deleted only by
+                // the user action of connecting pin 6 to 3.3v and then followed by a reset.
+                //While deleting bonding information delete on the Arduino and on the phone.
+                SerialUSB.println(F("phone/Arduino has deleted the bonding/pairing information"));
+              }
+
+              proximity_disconect_evt_rcvd (aci_evt->params.disconnected.btle_status);
+            }
+            lib_aci_connect(180/* in seconds */, 0x0100 /* advertising interval 100ms*/);
+            SerialUSB.println(F("Using existing bond stored in EEPROM."));
+            SerialUSB.println(F("   To delete the bond stored in EEPROM, connect Pin 6 to 3.3v and Reset."));
+            SerialUSB.println(F("   Make sure that the bond on the phone/PC is deleted as well."));
+            SerialUSB.println(F("Advertising started. Connecting."));
+          }
+          else
+          {
+            //There is no existing bond. Try to bond.
+            lib_aci_bond(180/* in seconds */, 0x0050 /* advertising interval 50ms*/);
+            SerialUSB.println(F("Advertising started. Bonding."));
+          }
+      }
         break;
 
       case ACI_EVT_DATA_RECEIVED:
@@ -279,6 +302,12 @@ void ble_loop()
         SerialUSB.println(aci_evt->params.data_received.rx_data.aci_data[0], DEC);
         link_loss_pipes_updated_evt_rcvd(aci_evt->params.data_received.rx_data.pipe_number,
                                          &aci_evt->params.data_received.rx_data.aci_data[0]);
+        // Findme command selected and Findme command not selected
+        if (aci_evt->params.data_received.rx_data.pipe_number == 2 && aci_evt->params.data_received.rx_data.aci_data[0] == 2 ) {
+          findMeMode = true;
+        } else if (aci_evt->params.data_received.rx_data.pipe_number == 2 && aci_evt->params.data_received.rx_data.aci_data[0] == 0 ) {
+          findMeMode = false;
+        }
         break;
 
       case ACI_EVT_DATA_CREDIT:
@@ -350,4 +379,19 @@ void ble_loop()
       setup_required = false;
     }
   }
+}
+
+/********************************
+ *  My Added functions          *
+ * ******************************/
+
+// This function resets our linkloss Alert level so we don't get more alerts
+void linkReset() {
+  //link_loss_pipes_updated_evt_rcvd(2,0);
+  link_loss_init();
+}
+
+// This function sends a disconnect signal when the device is moved in alarm mode
+bool linkDisconnect() {
+  return lib_aci_disconnect(&aci_state, ACI_REASON_TERMINATE);
 }

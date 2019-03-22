@@ -1,6 +1,6 @@
 #include <sam.h>
 #include "../include/rtc.h"
-#include "../include/ledcircle.h"
+// #include "../include/ledcircle.h"
 
 void rtc_init(uint8_t prescaler, uint32_t per)
 {
@@ -12,9 +12,9 @@ void rtc_init(uint8_t prescaler, uint32_t per)
   RTC->MODE1.INTENSET.bit.OVF = 1; // enable overflow interrupt
   RTC->MODE1.CTRL.bit.ENABLE = 1;
   while (RTC->MODE1.STATUS.bit.SYNCBUSY) {
-      ledcircle_select(1);
+      //ledcircle_select(1);
   }
-  ledcircle_select(0);
+ // ledcircle_select(0);
 
   NVIC_EnableIRQ(RTC_IRQn);
   NVIC_SetPriority(RTC_IRQn, 0x00);

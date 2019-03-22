@@ -5,8 +5,6 @@
 
 extern "C" void __libc_init_array(void);
 
-bool g_phone_detected = false;
-
 void usb_ctrl(int en)
 {
   if (en)
@@ -27,6 +25,7 @@ void usb_ctrl(int en)
       while ( 1 ) ;
     }
 
+// SPI NOT ENABLED?
     // Clock PORT for Digital I/O
     //	PM->APBBMASK.reg |= PM_APBBMASK_PORT ;
     //
@@ -34,10 +33,13 @@ void usb_ctrl(int en)
     //	PM->APBAMASK.reg |= PM_APBAMASK_EIC ;
 
     // Clock SERCOM for Serial
-    PM->APBCMASK.reg |= PM_APBCMASK_SERCOM0 | PM_APBCMASK_SERCOM1 | PM_APBCMASK_SERCOM2 | PM_APBCMASK_SERCOM3 | PM_APBCMASK_SERCOM4 | PM_APBCMASK_SERCOM5 ;
+    // Sercom 1 is USB, 3 is for i2c...
+    PM->APBCMASK.reg |= PM_APBCMASK_SERCOM1 | PM_APBCMASK_SERCOM3;
 
     // Clock TC/TCC for Pulse and Analog
-    PM->APBCMASK.reg |= PM_APBCMASK_TCC0 | PM_APBCMASK_TCC1 | PM_APBCMASK_TCC2 | PM_APBCMASK_TC3 | PM_APBCMASK_TC4 | PM_APBCMASK_TC5 ;
+    PM->APBCMASK.reg |= PM_APBCMASK_TCC0 | PM_APBCMASK_TC3;
+     USBDevice.init();
+     USBDevice.attach();
   }
 }
 

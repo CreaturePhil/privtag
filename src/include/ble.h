@@ -5,4 +5,7 @@ void ble_setup();
 
 void ble_loop();
 
+void linkReset();
+bool linkDisconnect();
+
 #endif

@@ -1,4 +1,5 @@
 #include <sam.h>
+#include "../../samd21/include/samd21g18a.h" // for vincent's computer since he can't find samd21 code
 #include "../include/i2c.h"
 
 /*
@@ -65,7 +66,7 @@ uint8_t i2c_transaction(uint8_t address, uint8_t dir, uint8_t* data, uint8_t len
       while (SERCOM3->I2CM.SYNCBUSY.bit.SYSOP);
       return 0;
     }
-    else {
+   else {
       // Case 3: Address packet transmit complete – Write packet, Master on Bus set
       if (dir == DIR_WRITE) {
         SERCOM3->I2CM.DATA.bit.DATA = data[len-1];

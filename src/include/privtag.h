@@ -3,11 +3,10 @@
 
 #define SLEEP_MODE_ENABLE 0
 #define SLOWER_CLOCK_ENABLE 0
+#define PRINT_DEBUG_ENABLE 1
 
-#define LED_ENABLE 0
-
-#define THRESHOLD 150
-#define TIME_NOT_MOVE 5
+#define THRESHOLD 500
+#define TIME_NOT_MOVE 10
 
 // for timer cc formula
 #define CPU_HZ 48000000
@@ -22,7 +21,6 @@
 
 static uint16_t volatile seconds;
 static uint16_t volatile timerCount;
-static uint8_t volatile isUSBConnected;
 
 static int16_t prev_x, prev_y, prev_z;
 static bool turnOnBeacon;
